@@ -156,19 +156,13 @@ with tabs[2]:
         'noche': 'Evening'
     })
 
-    view_option = st.radio("Select view:", ["By Neighborhood", "Distribution", "Top Neighborhoods Over Time"])
+    sub_tab = st.radio("Choose a visualization", ["Spot Distribution", "Neighborhood Evolution"])
 
-    if view_option == "By Neighborhood":
-        df_barrios = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
-        fig = px.bar(df_barrios.sort_values("plazas_disponibles", ascending=False),
-                     x="plazas_disponibles", y="barrio", orientation='h',
-                     labels={"plazas_disponibles": "Average Free Spots", "barrio": "Neighborhood"},
-                     title="Average Free Spots per Neighborhood")
-        st.plotly_chart(fig, use_container_width=True)
+    if sub_tab == "Spot Distribution":
+        st.markdown("### Distribution of Free Parking Spots")
 
-    elif view_option == "Distribution":
         fig = px.histogram(df, x='plazas_disponibles', nbins=50,
-                           title="Distribution of Free Parking Spots",
+                           title="Overall Distribution",
                            labels={"plazas_disponibles": "Free Spots"})
         st.plotly_chart(fig, use_container_width=True)
 
@@ -177,13 +171,15 @@ with tabs[2]:
                       labels={"plazas_disponibles": "Free Spots", "time_slot_en": "Time Slot"})
         st.plotly_chart(fig2, use_container_width=True)
 
-    elif view_option == "Top Neighborhoods Over Time":
-        top5 = df.groupby("barrio")['plazas_disponibles'].mean().sort_values(ascending=False).head(5).index
-        df_top = df[df['barrio'].isin(top5)]
-        avg_hourly = df_top.groupby(['barrio', 'hora'])['plazas_disponibles'].mean().reset_index()
+    elif sub_tab == "Neighborhood Evolution":
+        st.markdown("### Hourly Evolution by Neighborhood")
 
-        fig = px.line(avg_hourly, x='hora', y='plazas_disponibles', color='barrio',
+        barrio_selected = st.selectbox("Select a neighborhood", sorted(df['barrio'].unique()))
+        df_barrio = df[df['barrio'] == barrio_selected]
+        avg_by_hour = df_barrio.groupby('hora')['plazas_disponibles'].mean().reset_index()
+
+        fig = px.line(avg_by_hour, x='hora', y='plazas_disponibles',
                       markers=True,
-                      title="Top 5 Neighborhoods with Most Free Spots by Hour",
-                      labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "barrio": "Neighborhood"})
+                      title=f"Hourly Average Free Spots in {barrio_selected}",
+                      labels={"hora": "Hour", "plazas_disponibles": "Free Spots"})
         st.plotly_chart(fig, use_container_width=True)
