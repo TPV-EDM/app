@@ -6,21 +6,29 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import make_pipeline
 from sklearn.compose import ColumnTransformer
-from datetime import datetime
 import gzip
 import json
 
-# ---------- DATA LOADING ----------
+# ---------- CARGA DE DATOS ----------
 @st.cache_data
+
 def load_data():
     with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
         df = pd.read_csv(f)
     return df
 
 @st.cache_data
+
 def load_geojson():
     with open("geometria_barrios.json", "r", encoding="utf-8") as f:
         geojson = json.load(f)
+        for feature in geojson['features']:
+            b = feature['properties']['BARRIO']
+            feature['properties']['BARRIO_NORM'] = (
+                b.upper()
+                 .replace('Á', 'A').replace('É', 'E').replace('Í', 'I')
+                 .replace('Ó', 'O').replace('Ú', 'U').replace('Ü', 'U')
+            )
     return geojson
 
 def build_model(df):
@@ -36,17 +44,19 @@ def build_model(df):
     model.fit(X, y)
     return model
 
-# ---------- APP LAYOUT ----------
+# ---------- LAYOUT ----------
 st.set_page_config(layout="wide", page_title="Parking Prediction")
 st.title("\U0001F17F Parking Spot Prediction in Madrid")
 
 # Tabs
 tabs = st.tabs(["\U0001F5FA\ufe0f Prediction Map", "\U0001F4CA Model Info", "\U0001F4C8 Data Visuals"])
 
-df = load_data()
+# Load
 geojson = load_geojson()
+df = load_data()
 model = build_model(df)
-# --------------- TAB 1: PREDICTIONS ------------------
+
+# TAB 1
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
 
@@ -54,7 +64,7 @@ with tabs[0]:
         st.subheader("Filter Options")
         dia = st.selectbox("Day of the week", df['dia_semana'].unique())
         hora_range = st.slider("Hour Range", 0, 23, (8, 10))
-        barrios = st.multiselect("Select neighborhood(s)", df['barrio'].unique(), default=df['barrio'].unique()[0:2])
+        barrios = st.multiselect("Select neighborhood(s)", df['barrio'].unique(), default=df['barrio'].unique()[0:5])
 
     with col2:
         df_filtered = df[
@@ -64,38 +74,41 @@ with tabs[0]:
         ].copy()
 
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
-        df_filtered['ocupacion_%'] = 1 - df_filtered['pred'] / df_filtered['numero_plazas']
+        df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
 
-        # ---- Choropleth ----
-        # Normalizar nombres
-        df_filtered['barrio_norm'] = df_filtered['barrio'].str.upper().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+        df_filtered['barrio_norm'] = (
+            df_filtered['barrio']
+            .str.upper()
+            .str.normalize('NFKD')
+            .str.encode('ascii', errors='ignore')
+            .str.decode('utf-8')
+        )
 
-        agg = df_filtered.groupby('barrio_norm').agg(mean_ocupacion=('ocupacion_%', 'mean')).reset_index()
+        agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
 
         fig = px.choropleth_mapbox(
             agg,
             geojson=geojson,
             locations='barrio_norm',
-            featureidkey="properties.BARRIO",
-            color='mean_ocupacion',
-            color_continuous_scale="Reds",
+            color='total_pred_occupied',
+            featureidkey="properties.BARRIO_NORM",
             mapbox_style="carto-positron",
-            zoom=11,
             center={"lat": 40.4168, "lon": -3.7038},
-            opacity=0.6,
-            labels={'mean_ocupacion': 'Avg Occupancy'}
+            zoom=10,
+            color_continuous_scale="Reds",
+            title="Predicted Occupied Spots by Neighborhood (summed by hour)"
         )
-        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig, use_container_width=True)
 
-        # ---- Tabla con plazas ocupadas ----
-        st.markdown("### 🚗 Predicted Occupied Spots")
-        df_ocupadas = df_filtered[df_filtered['ocupacion_%'] > 0.7][
-            ['barrio', 'hora', 'numero_plazas', 'pred', 'ocupacion_%']
-        ].sort_values('ocupacion_%', ascending=False)
+        st.subheader("\U0001F697 Predicted Occupied Spots")
+        df_summary = df_filtered.groupby(['barrio', 'hora']).agg(
+            numero_plazas=('numero_plazas', 'sum'),
+            pred=('pred', 'sum')
+        ).reset_index()
+        df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
+        st.dataframe(df_summary, use_container_width=True)
 
-        st.dataframe(df_ocupadas, use_container_width=True)
-# --------------- TAB 2: MODEL INFO ------------------
+# TAB 2
 with tabs[1]:
     st.subheader("\U0001F4BB Model Info")
     st.markdown("""
@@ -103,11 +116,10 @@ with tabs[1]:
     **Input Features**: `barrio`, `dia_semana`, `tramo_horario`, `numero_plazas`  
     **Target**: `plazas_disponibles`  
     **Alpha**: 1.0  
-    **Preprocessing**: OneHotEncoder for categorical vars + passthrough for numeric  
-    **Note**: Only predictions with `hora` within selected range and selected barrios are shown.
+    **Preprocessing**: OneHotEncoder for categorical vars + passthrough for numeric
     """)
 
-# --------------- TAB 3: VISUALIZATIONS ------------------
+# TAB 3
 with tabs[2]:
     subtab = st.radio("Choose a View", ["Individual Barrios", "Compare Barrios"])
 
