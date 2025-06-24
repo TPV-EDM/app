@@ -46,7 +46,6 @@ tabs = st.tabs(["\U0001F5FA\ufe0f Prediction Map", "\U0001F4CA Model Info", "\U0
 df = load_data()
 geojson = load_geojson()
 model = build_model(df)
-
 # --------------- TAB 1: PREDICTIONS ------------------
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
@@ -62,29 +61,40 @@ with tabs[0]:
             (df['dia_semana'] == dia) &
             (df['barrio'].isin(barrios)) &
             (df['hora'].between(hora_range[0], hora_range[1]))
-        ]
+        ].copy()
 
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
+        df_filtered['ocupacion_%'] = 1 - df_filtered['pred'] / df_filtered['numero_plazas']
 
-        # Agregación por barrio
-        agg = df_filtered.groupby('barrio').agg(predicted_mean=('pred', 'mean')).reset_index()
+        # ---- Choropleth ----
+        # Normalizar nombres
+        df_filtered['barrio_norm'] = df_filtered['barrio'].str.upper().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+
+        agg = df_filtered.groupby('barrio_norm').agg(mean_ocupacion=('ocupacion_%', 'mean')).reset_index()
 
         fig = px.choropleth_mapbox(
             agg,
             geojson=geojson,
-            locations='barrio',
-            featureidkey="properties.BARRIO",  # asegúrate de que esta clave exista
-            color='predicted_mean',
-            color_continuous_scale="OrRd",
+            locations='barrio_norm',
+            featureidkey="properties.BARRIO",
+            color='mean_ocupacion',
+            color_continuous_scale="Reds",
             mapbox_style="carto-positron",
-            zoom=10,
-            center={"lat": 40.4168, "lon": -3.7038},  # Centro de Madrid
+            zoom=11,
+            center={"lat": 40.4168, "lon": -3.7038},
             opacity=0.6,
-            labels={'predicted_mean': 'Mean Prediction'}
+            labels={'mean_ocupacion': 'Avg Occupancy'}
         )
         fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig, use_container_width=True)
 
+        # ---- Tabla con plazas ocupadas ----
+        st.markdown("### 🚗 Predicted Occupied Spots")
+        df_ocupadas = df_filtered[df_filtered['ocupacion_%'] > 0.7][
+            ['barrio', 'hora', 'numero_plazas', 'pred', 'ocupacion_%']
+        ].sort_values('ocupacion_%', ascending=False)
+
+        st.dataframe(df_ocupadas, use_container_width=True)
 # --------------- TAB 2: MODEL INFO ------------------
 with tabs[1]:
     st.subheader("\U0001F4BB Model Info")
