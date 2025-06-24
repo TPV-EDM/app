@@ -7,11 +7,10 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import make_pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import mean_absolute_error, median_absolute_error, mean_absolute_percentage_error
-import gzip
 import plotly.express as px
+from sklearn.metrics import mean_absolute_error, median_absolute_error, mean_absolute_percentage_error
 
-# ---------- CONFIG ----------
+# ----- CONFIG -----
 st.set_page_config(layout="wide", page_title="Parking Spot Prediction")
 st.markdown("""
     <style>
@@ -29,21 +28,20 @@ st.markdown("""
 
 st.title("Parking Spot Prediction in Madrid")
 
-# ---------- LOAD ----------
+# ----- LOAD DATA -----
 @st.cache_data
 def load_data():
-    with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
-        return pd.read_csv(f)
+    return pd.read_csv("datos_plazas_disponibles_sin_prediccion.csv.gz")
 
 @st.cache_data
 def load_coords():
-    return pd.read_csv("coordenadas_barrios_madrid.csv")  # Must include: barrio, lat, lon
+    return pd.read_csv("coordenadas_barrios.csv")
 
 df = load_data()
 coords_df = load_coords()
 
-# ---------- MODEL ----------
-def build_model(df):
+# ----- TRAIN MODEL -----
+def train_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
     y = df['plazas_disponibles']
     preprocessor = ColumnTransformer([
@@ -54,13 +52,14 @@ def build_model(df):
     model.fit(X, y)
     return model
 
-model = build_model(df)
+model = train_model(df)
 df['plazas_libres_pred'] = model.predict(df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
 df['plazas_ocupadas_pred'] = df['numero_plazas'] - df['plazas_libres_pred']
 
-# ---------- TABS ----------
+# ----- TABS -----
 tabs = st.tabs(["Prediction Map", "Model Info", "Data Visuals"])
 
+# ------------------- TAB 1: MAP -------------------
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
 
@@ -68,92 +67,88 @@ with tabs[0]:
         st.subheader("Filter Options")
         dia = st.selectbox("Day of the week", sorted(df['dia_semana'].unique()))
         hora_min, hora_max = st.slider("Hour Range", 0, 23, (8, 10))
-
         lista_barrios = sorted(df['barrio'].unique())
         seleccion = st.multiselect("Select neighborhoods", options=lista_barrios, default=lista_barrios[:6])
-
         mostrar_todos = st.checkbox("Show all neighborhoods")
 
         barrios_filtrados = lista_barrios if mostrar_todos else seleccion
 
     with col2:
-        df_filtered = df[
+        df_filtrado = df[
             (df['dia_semana'] == dia) &
-            (df['barrio'].isin(barrios_filtrados)) &
-            (df['hora'].between(hora_min, hora_max))
+            (df['hora'].between(hora_min, hora_max)) &
+            (df['barrio'].isin(barrios_filtrados))
         ].copy()
 
-        if df_filtered.empty:
-            st.warning("No data for the selected filters.")
+        if df_filtrado.empty:
+            st.warning("No data matches the selected filters.")
         else:
-            df_grouped = df_filtered.groupby(['barrio', 'dia_semana', 'hora']).agg(
-                numero_plazas=('numero_plazas', 'median'),
-                tramo_horario=('tramo_horario', 'first')
+            agg = df_filtrado.groupby('barrio').agg(
+                plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
-
-            df_grouped['plazas_libres_pred'] = model.predict(
-                df_grouped[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
-            )
-            df_grouped['plazas_ocupadas_pred'] = df_grouped['numero_plazas'] - df_grouped['plazas_libres_pred']
-
-            agg = df_grouped.groupby('barrio').agg(
-                occupied_spots=('plazas_ocupadas_pred', 'sum')
-            ).reset_index()
-
-            agg_coords = agg.merge(coords_df, on='barrio', how='left')
+            agg = agg.merge(coords_df, on='barrio', how='left')
 
             st.subheader("Predicted Occupied Spots by Neighborhood")
             m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
-            max_radius = agg_coords['occupied_spots'].max()
-            for _, row in agg_coords.iterrows():
+            for _, row in agg.iterrows():
                 if pd.notnull(row['lat']) and pd.notnull(row['lon']):
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=5 + 10 * (row['occupied_spots'] / max_radius),
-                        color='red',
+                        radius=max(4, np.sqrt(row['plazas_ocupadas_predichas']) / 2),
+                        color='crimson',
                         fill=True,
                         fill_opacity=0.6,
-                        popup=f"{row['barrio']}: {int(row['occupied_spots'])} occupied"
+                        popup=f"{row['barrio']}: {int(row['plazas_ocupadas_predichas'])} occupied"
                     ).add_to(m)
 
             folium_static(m, width=1000, height=500)
 
             st.subheader("Predicted Values Table")
-            tabla = agg_coords[['barrio', 'occupied_spots']].sort_values('occupied_spots', ascending=False)
-            st.dataframe(tabla, use_container_width=True)
+            st.dataframe(agg.rename(columns={'plazas_ocupadas_predichas': 'Occupied spots'}), use_container_width=True)
 
+# ------------------- TAB 2: MODEL INFO -------------------
 with tabs[1]:
     st.subheader("Model Details")
+    st.markdown("""
+    **Model:** Ridge Regression  
+    **Input features:** `barrio`, `dia_semana`, `tramo_horario`, `numero_plazas`  
+    **Target:** `plazas_disponibles` (free spots)  
+    **Prediction used:** Occupied = Total - Predicted Free  
+    """)
 
-    y_true = df['plazas_disponibles']
-    y_pred = df['plazas_libres_pred']
+    mae = mean_absolute_error(df['plazas_disponibles'], df['plazas_libres_pred'])
+    medae = median_absolute_error(df['plazas_disponibles'], df['plazas_libres_pred'])
+    mape = mean_absolute_percentage_error(df['plazas_disponibles'], df['plazas_libres_pred'])
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("MAE", f"{mean_absolute_error(y_true, y_pred):.2f}")
-    col2.metric("Median AE", f"{median_absolute_error(y_true, y_pred):.2f}")
-    col3.metric("MAPE", f"{mean_absolute_percentage_error(y_true, y_pred) * 100:.2f}%")
+    col1.metric("MAE", f"{mae:.2f}")
+    col2.metric("Median AE", f"{medae:.2f}")
+    col3.metric("MAPE", f"{mape*100:.2f}%")
 
-    st.markdown("### Prediction vs. Actual")
-    fig = px.scatter(df.sample(2000), x='plazas_libres_pred', y='plazas_disponibles',
-                     trendline="ols", opacity=0.4,
-                     labels={"plazas_libres_pred": "Predicted", "plazas_disponibles": "Actual"})
-    fig.add_shape(type='line', x0=0, y0=0, x1=df['plazas_disponibles'].max(),
-                  y1=df['plazas_disponibles'].max(), line=dict(dash='dash'))
+    st.subheader("Prediction vs. Actual")
+    fig = px.scatter(
+        df.sample(2000),
+        x='plazas_libres_pred',
+        y='plazas_disponibles',
+        opacity=0.4,
+        color_discrete_sequence=["#4472C4"],
+        labels={"plazas_libres_pred": "Predicted", "plazas_disponibles": "Actual"},
+        title="Predicted vs. Actual Values"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
+# ------------------- TAB 3: DATA VISUALS -------------------
 with tabs[2]:
-    subtab = st.radio("Choose a View", ["Compare Neighborhoods", "Hourly Evolution"])
+    st.subheader("Data Visualizations")
+    modo = st.radio("Choose View", ["Single Neighborhood", "Compare Neighborhoods"])
 
-    if subtab == "Compare Neighborhoods":
-        st.markdown("### Occupied Spots by Neighborhood")
-        fig = px.box(df[df['barrio'].isin(barrios_filtrados)], x='barrio', y='plazas_ocupadas_pred',
-                     title="Occupied Spots Distribution")
+    if modo == "Single Neighborhood":
+        barrio_sel = st.selectbox("Select Neighborhood", df['barrio'].unique())
+        fig = px.histogram(df[df['barrio'] == barrio_sel], x='plazas_ocupadas_pred', nbins=30,
+                           title=f"Predicted Occupied Spots in {barrio_sel}")
         st.plotly_chart(fig, use_container_width=True)
-
     else:
-        st.markdown("### Average Occupancy by Hour")
-        hourly = df[df['barrio'].isin(barrios_filtrados)].groupby('hora').agg(
-            avg_occupied=('plazas_ocupadas_pred', 'mean')).reset_index()
-        fig = px.line(hourly, x='hora', y='avg_occupied', title="Hourly Occupancy Trend")
+        fig = px.box(df[df['barrio'].isin(barrios_filtrados)], x='barrio', y='plazas_ocupadas_pred',
+                     title="Occupied Spots Comparison")
         st.plotly_chart(fig, use_container_width=True)
