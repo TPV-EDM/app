@@ -37,7 +37,7 @@ def load_data():
         return pd.read_csv(f)
 
 @st.cache_data
-def get_coords(barrios):
+def get_coords_once(barrios):
     geolocator = Nominatim(user_agent="pred-parking")
     coords = []
     for barrio in barrios:
@@ -50,6 +50,7 @@ def get_coords(barrios):
             continue
     return pd.DataFrame(coords)
 
+@st.cache_data
 def build_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
     y = df['plazas_disponibles']
@@ -64,6 +65,7 @@ def build_model(df):
 # ---------- LOAD ----------
 df = load_data()
 model = build_model(df)
+coordenadas = get_coords_once(df['barrio'].unique())
 
 # ---------- TABS ----------
 tabs = st.tabs(["Prediction Map", "Model Info", "Data Visuals"])
@@ -105,17 +107,20 @@ with tabs[0]:
                 plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
 
-            coords_df = get_coords(agg['barrio'].unique())
-            agg_coords = agg.merge(coords_df, on='barrio', how='left')
+            agg_coords = agg.merge(coordenadas, on='barrio', how='left')
 
             st.subheader("Predicted Occupied Spots by Neighborhood")
             m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
+            max_val = agg_coords['plazas_ocupadas_predichas'].max()
+            min_val = agg_coords['plazas_ocupadas_predichas'].min()
+
             for _, row in agg_coords.iterrows():
                 if pd.notnull(row['lat']) and pd.notnull(row['lon']):
+                    radius = 5 + 15 * (row['plazas_ocupadas_predichas'] - min_val) / (max_val - min_val + 1e-6)
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=max(5, np.sqrt(row['plazas_ocupadas_predichas']) / 2),
+                        radius=radius,
                         color='red',
                         fill=True,
                         fill_opacity=0.6,
