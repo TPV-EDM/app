@@ -11,18 +11,14 @@ import geopandas as gpd
 
 # ---------- CARGA DE DATOS ----------
 @st.cache_data
-
 def load_data():
     with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
         df = pd.read_csv(f)
     return df
 
 @st.cache_data
-
 def load_geojson():
     gdf = gpd.read_file("geometria_barrios.geojson")
-
-    # Normalizamos el nombre del barrio para comparaciones robustas
     gdf['barrio_norm'] = (
         gdf['barrio']
         .str.upper()
@@ -49,10 +45,8 @@ def build_model(df):
 st.set_page_config(layout="wide", page_title="Parking Prediction")
 st.title("\U0001F17F Parking Spot Prediction in Madrid")
 
-# Tabs
 tabs = st.tabs(["\U0001F5FA\ufe0f Prediction Map", "\U0001F4CA Model Info", "\U0001F4C8 Data Visuals"])
 
-# Load
 gdf = load_geojson()
 df = load_data()
 model = build_model(df)
@@ -87,12 +81,14 @@ with tabs[0]:
 
         agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
 
-        # Unimos el GeoDataFrame con las predicciones
         choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
+        choropleth_data['total_pred_occupied'] = choropleth_data['total_pred_occupied'].fillna(0)
+        choropleth_data = choropleth_data.set_index('barrio_norm')
+        geojson_data = choropleth_data.__geo_interface__
 
         fig = px.choropleth_mapbox(
             choropleth_data,
-            geojson=choropleth_data.geometry.__geo_interface__,
+            geojson=geojson_data,
             locations=choropleth_data.index,
             color='total_pred_occupied',
             mapbox_style="carto-positron",
@@ -103,12 +99,8 @@ with tabs[0]:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Mostrar tabla
         st.subheader("\U0001F697 Predicted Occupied Spots")
-        df_summary = df_filtered.groupby(['barrio', 'hora']).agg(
-            numero_plazas=('numero_plazas', 'sum'),
-            pred=('pred', 'sum')
-        ).reset_index()
+        df_summary = df_filtered[['barrio', 'hora', 'numero_plazas', 'pred']].copy()
         df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
         st.dataframe(df_summary.sort_values(['barrio', 'hora']), use_container_width=True)
 
