@@ -145,17 +145,40 @@ with tabs[1]:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ------------------- TAB 3: DATA VISUALS -------------------
 with tabs[2]:
-    st.subheader("Data Visualizations")
-    modo = st.radio("Choose View", ["Single Neighborhood", "Compare Neighborhoods"])
+    st.subheader("Data Visuals")
 
-    if modo == "Single Neighborhood":
-        barrio_sel = st.selectbox("Select Neighborhood", df['barrio'].unique())
-        fig = px.histogram(df[df['barrio'] == barrio_sel], x='plazas_ocupadas_pred', nbins=30,
-                           title=f"Predicted Occupied Spots in {barrio_sel}")
+    df['dia_hora'] = df['dia_semana'] + " - " + df['hora'].astype(str) + "h"
+
+    subtab = st.radio("Explore:", ["By Neighborhood", "By Time", "Explore a Neighborhood"])
+
+    if subtab == "By Neighborhood":
+        df_barrios = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
+        fig = px.bar(df_barrios.sort_values("plazas_disponibles", ascending=False),
+                     x="plazas_disponibles", y="barrio", orientation='h',
+                     labels={"plazas_disponibles": "Avg. Free Spots", "barrio": "Neighborhood"},
+                     title="Average Free Spots per Neighborhood")
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        fig = px.box(df[df['barrio'].isin(barrios_filtrados)], x='barrio', y='plazas_ocupadas_pred',
-                     title="Occupied Spots Comparison")
-        st.plotly_chart(fig, use_container_width=True)
+
+    elif subtab == "By Time":
+        df_time = df.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
+        fig1 = px.density_heatmap(df_time, x='hora', y='dia_semana', z='plazas_disponibles',
+                                  color_continuous_scale='Blues',
+                                  title="Average Free Spots by Day and Hour",
+                                  labels={"plazas_disponibles": "Free Spots", "hora": "Hour", "dia_semana": "Day"})
+        st.plotly_chart(fig1, use_container_width=True)
+
+        fig2 = px.box(df, x='tramo_horario', y='plazas_disponibles',
+                      title="Free Spots by Time Slot",
+                      labels={"plazas_disponibles": "Free Spots", "tramo_horario": "Time Slot"})
+        st.plotly_chart(fig2, use_container_width=True)
+
+    elif subtab == "Explore a Neighborhood":
+        barrio_elegido = st.selectbox("Choose a Neighborhood", sorted(df['barrio'].unique()))
+        df_barrio = df[df['barrio'] == barrio_elegido]
+        df_line = df_barrio.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
+
+        fig3 = px.line(df_line, x='hora', y='plazas_disponibles', color='dia_semana',
+                       title=f"Hourly Evolution of Free Spots in {barrio_elegido}",
+                       labels={"plazas_disponibles": "Free Spots", "hora": "Hour", "dia_semana": "Day"})
+        st.plotly_chart(fig3, use_container_width=True)
