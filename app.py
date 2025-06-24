@@ -157,7 +157,8 @@ with tabs[2]:
         "Busiest Neighborhoods",
         "Hourly Evolution Animation",
         "Neighborhood Daily Animation",
-        "Weekend vs Weekdays"
+        "Weekend vs Weekdays",
+        "Animated Insights"
     ])
 
     if subtab == "By Time":
@@ -219,3 +220,26 @@ with tabs[2]:
                        labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "is_weekend": "Weekend?"},
                        title="Free Spots: Weekend vs Weekdays")
         st.plotly_chart(fig7, use_container_width=True)
+
+    elif subtab == "Animated Insights":
+        st.markdown("### Top 10 Neighborhoods by Hour (Animated)")
+        df_top10 = df.groupby(['hora', 'barrio'])['plazas_disponibles'].mean().reset_index()
+        top10_all = df_top10.groupby('barrio')['plazas_disponibles'].mean().nlargest(10).index.tolist()
+        df_top10_filtered = df_top10[df_top10['barrio'].isin(top10_all)]
+
+        fig8 = px.bar(df_top10_filtered, x='plazas_disponibles', y='barrio', color='barrio',
+                      animation_frame='hora', orientation='h',
+                      labels={"plazas_disponibles": "Free Spots", "barrio": "Neighborhood"},
+                      title="Animated Hourly Ranking of Top Neighborhoods")
+        st.plotly_chart(fig8, use_container_width=True)
+
+        st.markdown("### Daily Evolution of Top 5 Neighborhoods")
+        top5_barr = df['barrio'].value_counts().head(5).index.tolist()
+        df_day_anim = df[df['barrio'].isin(top5_barr)]
+        df_day_anim_grouped = df_day_anim.groupby(['barrio', 'dia_semana'])['plazas_disponibles'].mean().reset_index()
+
+        fig9 = px.bar(df_day_anim_grouped, x='dia_semana', y='plazas_disponibles', color='barrio',
+                      barmode='group',
+                      labels={"plazas_disponibles": "Free Spots", "dia_semana": "Day"},
+                      title="Average Free Spots by Day for Top Neighborhoods")
+        st.plotly_chart(fig9, use_container_width=True)
