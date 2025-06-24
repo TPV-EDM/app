@@ -36,7 +36,7 @@ def load_data():
 
 @st.cache_data
 def load_coords():
-    return pd.read_csv("coordenadas_barrios.csv")
+    return pd.read_csv("coordenadas_barrios_madrid.csv")
 
 def build_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
