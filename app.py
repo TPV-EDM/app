@@ -73,11 +73,11 @@ with tabs[0]:
 
     with col1:
         st.subheader("Filter Options")
-        dia = st.selectbox("Day of the week", df['dia_semana'].unique())
+        dia = st.selectbox("Day of the week", sorted(df['dia_semana'].unique()))
         hora_min, hora_max = st.slider("Hour Range", 0, 23, (8, 10))
 
-        lista_barrios = list(df['barrio'].unique())
-        opciones_barrios = ["TODOS"] + sorted(lista_barrios)
+        lista_barrios = sorted(df['barrio'].unique())
+        opciones_barrios = ["TODOS"] + lista_barrios
         seleccion = st.multiselect("Select neighborhoods", opciones_barrios, default=opciones_barrios[:6])
         barrios = lista_barrios if "TODOS" in seleccion else seleccion
 
