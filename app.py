@@ -20,16 +20,17 @@ def load_data():
 @st.cache_data
 
 def load_geojson():
-    with open("geometria_barrios.geojson", "r", encoding="utf-8") as f:
-        geojson = json.load(f)
-        for feature in geojson['features']:
-            b = feature['properties']['BARRIO']
-            feature['properties']['BARRIO_NORM'] = (
-                b.upper()
-                 .replace('Á', 'A').replace('É', 'E').replace('Í', 'I')
-                 .replace('Ó', 'O').replace('Ú', 'U').replace('Ü', 'U')
-            )
-    return geojson
+    gdf = gpd.read_file("geometria_barrios.geojson")
+
+    # Normalizamos el nombre del barrio para comparaciones robustas
+    gdf['barrio_norm'] = (
+        gdf['barrio']
+        .str.upper()
+        .str.normalize('NFKD')
+        .str.encode('ascii', errors='ignore')
+        .str.decode('utf-8')
+    )
+    return gdf
 
 def build_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
@@ -75,32 +76,29 @@ with tabs[0]:
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
         df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
 
-        # Normalizar nombre del barrio (coincidir con GeoJSON)
         df_filtered['barrio_norm'] = (
-            df_filtered['barrio']
-            .str.upper()
-            .str.replace('Á', 'A')
-            .str.replace('É', 'E')
-            .str.replace('Í', 'I')
-            .str.replace('Ó', 'O')
-            .str.replace('Ú', 'U')
-            .str.replace('Ü', 'U')
-        )
-
-        # Agrupar para el mapa
+        df_filtered['barrio']
+        .str.upper()
+        .str.normalize('NFKD')
+        .str.encode('ascii', errors='ignore')
+        .str.decode('utf-8')
+    )
+    
         agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
-
+        
+        # Unimos el GeoDataFrame con las predicciones
+        choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
+        
         fig = px.choropleth_mapbox(
-            agg,
-            geojson=geojson,
-            locations='barrio_norm',
+            choropleth_data,
+            geojson=choropleth_data.geometry.__geo_interface__,
+            locations=choropleth_data.index,
             color='total_pred_occupied',
-            featureidkey="properties.BARRIO_NORM",
             mapbox_style="carto-positron",
             center={"lat": 40.4168, "lon": -3.7038},
             zoom=10,
             color_continuous_scale="Reds",
-            opacity=0.65,
+            title="Predicted Occupied Spots by Neighborhood (summed by hour)"
         )
         st.plotly_chart(fig, use_container_width=True)
 
