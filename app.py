@@ -16,12 +16,17 @@ st.markdown("""
     <style>
         html, body, [class*="css"]  {
             font-family: 'Segoe UI', sans-serif;
-            color: #333333;
-            background-color: #ffffff;
+            color: #1a1a1a;
+            background-color: #f9f9f9;
         }
         .stButton>button {
             color: white;
-            background-color: #4472C4;
+            background-color: #00529B;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .stDataFrame th, .stDataFrame td {
+            font-size: 14px;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -114,6 +119,7 @@ with tabs[0]:
             tabla['plazas_ocupadas_predichas'] = tabla['plazas_ocupadas_predichas'].round().astype(int)
             tabla.columns = ['Neighborhood', 'Occupied spots']
             st.dataframe(tabla, use_container_width=True)
+
 # ------------------- TAB 2: MODEL INFO -------------------
 with tabs[1]:
     st.subheader("Model Details")
@@ -122,6 +128,11 @@ with tabs[1]:
     **Input features:** `barrio`, `dia_semana`, `tramo_horario`, `numero_plazas`  
     **Target:** `plazas_disponibles` (free spots)  
     **Prediction used:** Occupied = Total - Predicted Free  
+
+    **Interpretation of Metrics:**
+    - **MAE (Mean Absolute Error):** On average, the prediction differs by this many spots. Lower is better.
+    - **Median AE:** The middle value of all absolute errors, less sensitive to outliers.
+    - **MAPE (Mean Absolute Percentage Error):** Average percentage error; here it's under 1%, which indicates excellent relative performance.
     """)
 
     mae = mean_absolute_error(df['plazas_disponibles'], df['plazas_libres_pred'])
