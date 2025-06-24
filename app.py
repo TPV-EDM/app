@@ -14,7 +14,12 @@ import json
 # ------------------
 # CARGAR DATOS Y GEOJSON
 # ------------------
-df = pd.read_csv("datos_plazas_disponibles_sin_prediccion (2).csv")
+
+import gzip
+
+with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
+    df = pd.read_csv(f)
+
 with open("geometria_barrios_valido.geojson", "r", encoding="utf-8") as f:
     geojson_data = json.load(f)
 
