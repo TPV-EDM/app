@@ -8,6 +8,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.compose import ColumnTransformer
 import gzip
 import geopandas as gpd
+import json
 
 # ---------- CARGA DE DATOS ----------
 @st.cache_data
@@ -71,6 +72,7 @@ with tabs[0]:
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
         df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
 
+        # Normalizar nombres
         df_filtered['barrio_norm'] = (
             df_filtered['barrio']
             .str.upper()
@@ -79,27 +81,31 @@ with tabs[0]:
             .str.decode('utf-8')
         )
 
+        # Agrupamos para el mapa
         agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
 
+        # Unimos con geometrías
         choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
         choropleth_data['total_pred_occupied'] = choropleth_data['total_pred_occupied'].fillna(0)
 
-        geojson_data = choropleth_data.__geo_interface__
+        # Exportar geojson a dict
+        geojson_dict = json.loads(choropleth_data.to_json())
 
+        # Mapa
         fig = px.choropleth_mapbox(
             choropleth_data,
-            geojson=geojson_data,
+            geojson=geojson_dict,
             locations='barrio_norm',
-            featureidkey='properties.barrio_norm',
+            featureidkey="properties.barrio_norm",
             color='total_pred_occupied',
             mapbox_style="carto-positron",
             center={"lat": 40.4168, "lon": -3.7038},
             zoom=10,
-            color_continuous_scale="Reds",
-            title="Predicted Occupied Spots by Neighborhood (summed by hour)"
+            color_continuous_scale="Reds"
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # Tabla detallada
         st.subheader("\U0001F697 Predicted Occupied Spots")
         df_summary = df_filtered[['barrio', 'hora', 'numero_plazas', 'pred']].copy()
         df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
