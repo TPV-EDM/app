@@ -83,13 +83,14 @@ with tabs[0]:
 
         choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
         choropleth_data['total_pred_occupied'] = choropleth_data['total_pred_occupied'].fillna(0)
-        choropleth_data = choropleth_data.set_index('barrio_norm')
+
         geojson_data = choropleth_data.__geo_interface__
 
         fig = px.choropleth_mapbox(
             choropleth_data,
             geojson=geojson_data,
-            locations=choropleth_data.index,
+            locations='barrio_norm',
+            featureidkey='properties.barrio_norm',
             color='total_pred_occupied',
             mapbox_style="carto-positron",
             center={"lat": 40.4168, "lon": -3.7038},
