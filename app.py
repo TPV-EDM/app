@@ -42,7 +42,6 @@ def build_model(df):
     model.fit(X, y)
     return model
 
-# Configuración
 st.set_page_config(layout="wide", page_title="Parking Prediction")
 st.title("\U0001F17F Parking Spot Prediction in Madrid")
 
@@ -70,8 +69,6 @@ with tabs[0]:
         ].copy()
 
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
-        df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
-
         df_filtered['barrio_norm'] = (
             df_filtered['barrio']
             .str.upper()
@@ -84,7 +81,6 @@ with tabs[0]:
         choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
         choropleth_data['total_pred_occupied'] = choropleth_data['total_pred_occupied'].fillna(0)
 
-        # Aseguramos que el GeoJSON tenga el id correcto
         geojson_dict = json.loads(choropleth_data.to_json())
         for feature in geojson_dict["features"]:
             feature["id"] = feature["properties"]["barrio_norm"]
@@ -103,9 +99,10 @@ with tabs[0]:
         st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("\U0001F697 Predicted Occupied Spots")
-        df_summary = df_filtered[['barrio', 'hora', 'numero_plazas', 'pred']].copy()
-        df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
-        st.dataframe(df_summary.sort_values(['barrio', 'hora']), use_container_width=True)
+        df_summary = df_filtered.groupby('barrio').agg(
+            plazas_predichas=('pred', 'sum')
+        ).reset_index()
+        st.dataframe(df_summary, use_container_width=True)
 
 # TAB 2
 with tabs[1]:
