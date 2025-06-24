@@ -152,23 +152,15 @@ with tabs[2]:
     df['is_weekend'] = df['dia_semana'].isin(['Saturday', 'Sunday'])
 
     subtab = st.radio("Explore:", [
-        "By Neighborhood",
         "By Time",
         "Explore a Neighborhood",
         "Busiest Neighborhoods",
-        "Hourly Variability",
+        "Hourly Evolution Animation",
+        "Neighborhood Daily Animation",
         "Weekend vs Weekdays"
     ])
 
-    if subtab == "By Neighborhood":
-        df_barrios = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
-        fig = px.bar(df_barrios.sort_values("plazas_disponibles", ascending=False),
-                     x="plazas_disponibles", y="barrio", orientation='h',
-                     labels={"plazas_disponibles": "Avg. Free Spots", "barrio": "Neighborhood"},
-                     title="Average Free Spots per Neighborhood")
-        st.plotly_chart(fig, use_container_width=True)
-
-    elif subtab == "By Time":
+    if subtab == "By Time":
         df_time = df.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
         fig1 = px.line(df_time, x='hora', y='plazas_disponibles', color='dia_semana',
                        title="Hourly Free Spots by Day",
@@ -194,24 +186,36 @@ with tabs[2]:
         df_busiest = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
         fig4 = px.bar(df_busiest.sort_values("plazas_disponibles").head(10),
                       x="plazas_disponibles", y="barrio", orientation='h',
-                      labels={"plazas_disponibles": "Avg. Free Spots", "barrio": "Neighborhood"},
+                      labels={"plazas_disibles": "Avg. Free Spots", "barrio": "Neighborhood"},
                       title="Top 10 Busiest Neighborhoods (Fewer Free Spots)")
         st.plotly_chart(fig4, use_container_width=True)
 
-    elif subtab == "Hourly Variability":
-        top_barrios = df['barrio'].value_counts().head(4).index.tolist()
+    elif subtab == "Hourly Evolution Animation":
+        top_barrios = df['barrio'].value_counts().head(5).index.tolist()
         df_subset = df[df['barrio'].isin(top_barrios)]
+        df_anim = df_subset.groupby(['barrio', 'dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
 
-        fig5 = px.line(df_subset, x='hora', y='plazas_disponibles', color='barrio',
-                       animation_frame='dia_semana',
-                       title="Hourly Variability in Top Neighborhoods by Day",
+        fig5 = px.line(df_anim, x='hora', y='plazas_disponibles', color='barrio',
+                       animation_frame='dia_semana', markers=True,
+                       title="Animated Hourly Evolution in Top Neighborhoods",
                        labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "barrio": "Neighborhood"})
         st.plotly_chart(fig5, use_container_width=True)
+
+    elif subtab == "Neighborhood Daily Animation":
+        barrio_anim = st.selectbox("Choose a Neighborhood", sorted(df['barrio'].unique()), key="ani_barrio")
+        df_anim_barrio = df[df['barrio'] == barrio_anim]
+        df_anim_day = df_anim_barrio.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
+
+        fig6 = px.line(df_anim_day, x='hora', y='plazas_disponibles',
+                       animation_frame='dia_semana', markers=True,
+                       title=f"Animated Daily Evolution in {barrio_anim}",
+                       labels={"hora": "Hour", "plazas_disponibles": "Free Spots"})
+        st.plotly_chart(fig6, use_container_width=True)
 
     elif subtab == "Weekend vs Weekdays":
         df_grouped = df.groupby(['is_weekend', 'hora'])['plazas_disponibles'].mean().reset_index()
 
-        fig6 = px.line(df_grouped, x='hora', y='plazas_disponibles', color='is_weekend',
+        fig7 = px.line(df_grouped, x='hora', y='plazas_disponibles', color='is_weekend',
                        labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "is_weekend": "Weekend?"},
                        title="Free Spots: Weekend vs Weekdays")
-        st.plotly_chart(fig6, use_container_width=True)
+        st.plotly_chart(fig7, use_container_width=True)
