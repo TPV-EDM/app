@@ -70,7 +70,9 @@ with tabs[0]:
         lista_barrios = sorted(df['barrio'].unique())
         opciones_barrios = ["TODOS"] + lista_barrios
         seleccion = st.multiselect("Select neighborhoods", opciones_barrios, default=opciones_barrios[:6])
-        barrios = lista_barrios if "TODOS" in seleccion else seleccion
+        mostrar_todos = st.checkbox("Mostrar todos los barrios")
+
+        barrios = lista_barrios if mostrar_todos or "TODOS" in seleccion else seleccion
 
     with col2:
         df_filtered = df[
@@ -96,6 +98,7 @@ with tabs[0]:
                 plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
 
+            agg = agg[agg['barrio'].isin(barrios)]  # Asegura que solo se muestran los seleccionados
             agg['lat'] = agg['barrio'].map(lambda b: coords_dict.get(b, {}).get('lat'))
             agg['lon'] = agg['barrio'].map(lambda b: coords_dict.get(b, {}).get('lon'))
 
