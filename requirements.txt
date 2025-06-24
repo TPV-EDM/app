@@ -5,3 +5,4 @@ folium
 scikit-learn
 joblib
 streamlit-folium
+matplotlib.pyplot
