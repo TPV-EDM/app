@@ -16,24 +16,29 @@ st.markdown("""
     <style>
         html, body, [class*="css"] {
             font-family: 'Segoe UI', sans-serif !important;
-            color: #333333 !important;
-            background-color: #ffffff !important;
+            background-color: #fffce6 !important;  /* Fondo amarillo claro */
+            color: #1a2e52 !important;  /* Texto en azul oscuro */
         }
         .stButton > button {
             color: white !important;
-            background-color: #4472C4 !important;
+            background-color: #2e6eb5 !important;  /* Azul elegante */
             border-radius: 5px !important;
             border: none !important;
         }
         .stTabs [data-baseweb="tab-list"] button {
             font-size: 16px !important;
-            color: #4472C4 !important;
+            color: #2e6eb5 !important;
+            font-weight: bold !important;
         }
         h1, h2, h3 {
-            color: #2C3E50 !important;
+            color: #1a2e52 !important;  /* Azul oscuro para títulos */
         }
         .block-container {
             padding-top: 2rem !important;
+        }
+        .stDataFrame thead tr th {
+            background-color: #cbe0ff !important;
+            color: #1a2e52 !important;
         }
     </style>
 """, unsafe_allow_html=True)
