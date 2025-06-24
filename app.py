@@ -12,8 +12,10 @@ from datetime import datetime
 @st.cache_data
 
 def load_data():
-    # Simulación, sustituye por tu CSV real
-    df = pd.read_csv("datos_plazas_disponibles_sin_prediccion.csv")
+    
+    with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
+    df = pd.read_csv(f)
+
     return df
 
 def build_model(df):
