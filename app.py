@@ -14,7 +14,7 @@ from datetime import datetime
 def load_data():
     
     with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
-    df = pd.read_csv(f)
+        df = pd.read_csv(f)
 
     return df
 
