@@ -35,7 +35,7 @@ def load_data():
 
 @st.cache_data
 def load_coords():
-    return pd.read_csv("coordenadas_barrios.csv")
+    return pd.read_csv("coordenadas_barrios_madrid.csv")
 
 df = load_data()
 coords_df = load_coords()
