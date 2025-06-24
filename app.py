@@ -55,7 +55,6 @@ gdf = load_geojson()
 df = load_data()
 model = build_model(df)
 
-# ------------------ TAB 1 ------------------
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
 
@@ -66,24 +65,31 @@ with tabs[0]:
         barrios = st.multiselect("Select neighborhood(s)", df['barrio'].unique(), default=df['barrio'].unique()[0:5])
 
     with col2:
+        # Filtramos primero
         df_filtered = df[
             (df['dia_semana'] == dia) &
             (df['barrio'].isin(barrios)) &
             (df['hora'].between(hora_range[0], hora_range[1]))
         ].copy()
 
-        df_filtered['plazas_libres_pred'] = model.predict(
-            df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
-        )
-
-        # Agrupamos por barrio
-        agg = df_filtered.groupby('barrio').agg(
-            plazas_libres_medianas=('plazas_libres_pred', 'median'),
-            plazas_totales_medianas=('numero_plazas', 'median')
+        # AGRUPAMOS: una fila por barrio y hora
+        df_grouped = df_filtered.groupby(['barrio', 'dia_semana', 'hora']).agg(
+            numero_plazas=('numero_plazas', 'median'),
+            tramo_horario=('tramo_horario', 'first')  # asumimos que es único por hora
         ).reset_index()
-        agg['plazas_ocupadas_predichas'] = agg['plazas_totales_medianas'] - agg['plazas_libres_medianas']
 
-        # CENTROIDES PARA PUNTOS
+        # Predecimos sobre el df ya agrupado
+        df_grouped['plazas_libres_pred'] = model.predict(
+            df_grouped[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
+        )
+        df_grouped['plazas_ocupadas_pred'] = df_grouped['numero_plazas'] - df_grouped['plazas_libres_pred']
+
+        # Agrupamos por barrio (para mapa y tabla)
+        agg = df_grouped.groupby('barrio').agg(
+            plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
+        ).reset_index()
+
+        # CENTROIDES PARA MAPA
         centroides = gdf[['barrio', 'geometry']].copy()
         centroides['centroide'] = centroides.geometry.centroid
         centroides['lat'] = centroides.centroide.y
@@ -91,7 +97,6 @@ with tabs[0]:
 
         agg_coords = agg.merge(centroides, on='barrio', how='left')
 
-        # MAPA
         st.subheader("Predicted Occupied Spots by Neighborhood (circle = size)")
         m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
@@ -108,12 +113,10 @@ with tabs[0]:
 
         folium_static(m, width=1000, height=500)
 
-        # TABLA FINAL
+        # Tabla resumen
         st.subheader("\U0001F697 Predicted Occupied Spots")
-        df_summary = agg[['barrio', 'plazas_ocupadas_predichas']].copy()
-        df_summary.columns = ['barrio', 'plazas_predichas']
+        df_summary = agg.rename(columns={'plazas_ocupadas_predichas': 'plazas_predichas'})
         st.dataframe(df_summary, use_container_width=True)
-
 # ------------------ TAB 2 ------------------
 with tabs[1]:
     st.subheader("\U0001F4BB Model Info")
