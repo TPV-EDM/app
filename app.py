@@ -148,9 +148,17 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("Data Visuals")
 
-    df['day_hour'] = df['dia_semana'] + " - " + df['hora'].astype(str) + "h"
+    df['dia_hora'] = df['dia_semana'] + " - " + df['hora'].astype(str) + "h"
+    df['is_weekend'] = df['dia_semana'].isin(['Saturday', 'Sunday'])
 
-    subtab = st.radio("Explore:", ["By Neighborhood", "By Time", "Explore a Neighborhood"])
+    subtab = st.radio("Explore:", [
+        "By Neighborhood",
+        "By Time",
+        "Explore a Neighborhood",
+        "Busiest Neighborhoods",
+        "Hourly Variability",
+        "Weekend vs Weekdays"
+    ])
 
     if subtab == "By Neighborhood":
         df_barrios = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
@@ -162,23 +170,48 @@ with tabs[2]:
 
     elif subtab == "By Time":
         df_time = df.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
-
         fig1 = px.line(df_time, x='hora', y='plazas_disponibles', color='dia_semana',
-                       labels={"plazas_disponibles": "Free Spots", "hora": "Hour", "dia_semana": "Day"},
-                       title="Average Free Spots by Hour and Day")
+                       title="Hourly Free Spots by Day",
+                       labels={"plazas_disponibles": "Free Spots", "hora": "Hour", "dia_semana": "Day"})
         st.plotly_chart(fig1, use_container_width=True)
 
         fig2 = px.box(df, x='tramo_horario', y='plazas_disponibles',
-                      title="Free Spots Distribution by Time Slot",
+                      title="Free Spots by Time Slot",
                       labels={"plazas_disponibles": "Free Spots", "tramo_horario": "Time Slot"})
         st.plotly_chart(fig2, use_container_width=True)
 
     elif subtab == "Explore a Neighborhood":
-        selected_neigh = st.selectbox("Choose a Neighborhood", sorted(df['barrio'].unique()))
-        df_barrio = df[df['barrio'] == selected_neigh]
+        barrio_elegido = st.selectbox("Choose a Neighborhood", sorted(df['barrio'].unique()))
+        df_barrio = df[df['barrio'] == barrio_elegido]
         df_line = df_barrio.groupby(['dia_semana', 'hora'])['plazas_disponibles'].mean().reset_index()
 
         fig3 = px.line(df_line, x='hora', y='plazas_disponibles', color='dia_semana',
-                       title=f"Hourly Evolution of Free Spots in {selected_neigh}",
+                       title=f"Hourly Evolution of Free Spots in {barrio_elegido}",
                        labels={"plazas_disponibles": "Free Spots", "hora": "Hour", "dia_semana": "Day"})
         st.plotly_chart(fig3, use_container_width=True)
+
+    elif subtab == "Busiest Neighborhoods":
+        df_busiest = df.groupby("barrio")['plazas_disponibles'].mean().reset_index()
+        fig4 = px.bar(df_busiest.sort_values("plazas_disponibles").head(10),
+                      x="plazas_disponibles", y="barrio", orientation='h',
+                      labels={"plazas_disponibles": "Avg. Free Spots", "barrio": "Neighborhood"},
+                      title="Top 10 Busiest Neighborhoods (Fewer Free Spots)")
+        st.plotly_chart(fig4, use_container_width=True)
+
+    elif subtab == "Hourly Variability":
+        top_barrios = df['barrio'].value_counts().head(4).index.tolist()
+        df_subset = df[df['barrio'].isin(top_barrios)]
+
+        fig5 = px.line(df_subset, x='hora', y='plazas_disponibles', color='barrio',
+                       animation_frame='dia_semana',
+                       title="Hourly Variability in Top Neighborhoods by Day",
+                       labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "barrio": "Neighborhood"})
+        st.plotly_chart(fig5, use_container_width=True)
+
+    elif subtab == "Weekend vs Weekdays":
+        df_grouped = df.groupby(['is_weekend', 'hora'])['plazas_disponibles'].mean().reset_index()
+
+        fig6 = px.line(df_grouped, x='hora', y='plazas_disponibles', color='is_weekend',
+                       labels={"hora": "Hour", "plazas_disponibles": "Free Spots", "is_weekend": "Weekend?"},
+                       title="Free Spots: Weekend vs Weekdays")
+        st.plotly_chart(fig6, use_container_width=True)
