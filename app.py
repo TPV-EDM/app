@@ -1,86 +1,92 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jun 20 18:48:48 2025
-
-@author: Usuario
-"""
-
+# app.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import folium
 from streamlit_folium import st_folium
+import joblib
 import json
-
-# ------------------
-# CARGAR DATOS Y GEOJSON
-# ------------------
-
 import gzip
 
-with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
-    df = pd.read_csv(f)
+# ------------------
+# LOAD MODEL AND FILES
+# ------------------
 
-with open("geometria_barrios_valido.geojson", "r", encoding="utf-8") as f:
-    geojson_data = json.load(f)
+@st.cache_resource
+def load_model():
+    return joblib.load("modelo_ridge_disponibles.pkl")
+
+@st.cache_data
+def load_data():
+    with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", "rt") as f:
+        df = pd.read_csv(f)
+    return df
+
+@st.cache_data
+def load_geojson():
+    with open("geometria_barrios_valido.geojson", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+model = load_model()
+df = load_data()
+geojson_data = load_geojson()
 
 # ------------------
-# INTERFAZ DE USUARIO
+# USER INTERFACE
 # ------------------
-st.title("🅿️ Predicción de Plazas de Aparcamiento por Barrio")
+st.title("🅿️ Parking Availability Prediction by Neighborhood")
 
-dia = st.selectbox("Día de la semana", df["dia_semana"].unique())
-hora = st.slider("Hora del día", int(df["hora"].min()), int(df["hora"].max()), 12)
-barrio_seleccionado = st.multiselect("Selecciona barrio(s)", sorted(df["barrio"].unique()))
+day = st.selectbox("Day of the week", sorted(df["dia_semana"].unique()))
+hour = st.slider("Hour of the day", int(df["hora"].min()), int(df["hora"].max()), 12)
+selected_neighborhoods = st.multiselect("Select neighborhood(s)", sorted(df["barrio"].unique()))
 
-# ------------------
-# CÁLCULO DE MÉTRICAS
-# ------------------
-df_filtrado = df[(df["dia_semana"] == dia) & (df["hora"] == hora)]
-
-if barrio_seleccionado:
-    df_filtrado = df_filtrado[df_filtrado["barrio"].isin(barrio_seleccionado)]
-else:
-    st.warning("Selecciona al menos un barrio para ver resultados.")
+if not selected_neighborhoods:
+    st.warning("Please select at least one neighborhood.")
     st.stop()
 
-if df_filtrado.empty:
-    st.warning("No hay datos para ese día, hora y barrios seleccionados.")
-    st.stop()
-
-# Agrupar datos por barrio
-agrupado = df_filtrado.groupby("barrio").agg(
-    plazas_ocupadas=("num_tiques", "mean"),
-    plazas_totales=("numero_plazas", "first")
-)
-agrupado["plazas_ocupadas"] = agrupado["plazas_ocupadas"].round().astype(int)
-agrupado["plazas_totales"] = agrupado["plazas_totales"].round().astype(int)
-agrupado["plazas_libres"] = (agrupado["plazas_totales"] - agrupado["plazas_ocupadas"]).clip(lower=0)
-
-# Reset index para mostrar
-resultado = agrupado.reset_index()[["barrio", "plazas_libres", "plazas_ocupadas", "plazas_totales"]]
-
 # ------------------
-# MOSTRAR TABLA
+# PREPARE INPUT FOR PREDICTION
 # ------------------
-st.subheader("📋 Predicción por Barrio")
-st.dataframe(resultado)
+# Use average number of total spots per neighborhood (fixed value)
+plazas_reference = df.groupby("barrio")["numero_plazas"].mean().round().astype(int).to_dict()
+
+df_input = pd.DataFrame({
+    "barrio": selected_neighborhoods,
+    "dia_semana": [day] * len(selected_neighborhoods),
+    "tramo_horario": [f"{hour:02d}:00-{hour+1:02d}:00"] * len(selected_neighborhoods),
+    "numero_plazas": [plazas_reference[b] for b in selected_neighborhoods]
+})
+
+# Predict
+predicted_available = model.predict(df_input).round().astype(int)
+df_input["predicted_available"] = np.clip(predicted_available, 0, None)
 
 # ------------------
-# MAPA COROPLET
+# DISPLAY TABLE
 # ------------------
-st.subheader("🗺️ Mapa de plazas predichas")
+st.subheader("📋 Predicted Available Spots")
+st.dataframe(df_input[["barrio", "numero_plazas", "predicted_available"]].rename(columns={
+    "barrio": "Neighborhood",
+    "numero_plazas": "Total Spots",
+    "predicted_available": "Available Spots"
+}))
+
+# ------------------
+# MAP DISPLAY
+# ------------------
+st.subheader("🗺️ Availability Map")
 
 m = folium.Map(location=[40.4168, -3.7038], zoom_start=12)
 
 folium.Choropleth(
     geo_data=geojson_data,
-    data=resultado,
-    columns=["barrio", "plazas_libres"],
+    data=df_input,
+    columns=["barrio", "predicted_available"],
     key_on="feature.properties.barrio",
     fill_color="YlGnBu",
     fill_opacity=0.7,
     line_opacity=0.2,
-    legend_name="Plazas libres promedio",
+    legend_name="Predicted Available Spots",
 ).add_to(m)
 
 st_folium(m, width=700, height=500)
