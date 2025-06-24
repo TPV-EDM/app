@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import gzip  # ← IMPORTANTE
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import make_pipeline
@@ -10,12 +11,9 @@ from datetime import datetime
 
 # ---------- DATA LOADING ----------
 @st.cache_data
-
 def load_data():
-    
     with gzip.open("datos_plazas_disponibles_sin_prediccion.csv.gz", 'rt') as f:
         df = pd.read_csv(f)
-
     return df
 
 def build_model(df):
