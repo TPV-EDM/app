@@ -70,7 +70,8 @@ with tabs[0]:
         hora_min, hora_max = st.slider("Hour Range", 0, 23, (8, 10))
 
         lista_barrios = sorted(df['barrio'].unique())
-        seleccion = st.multiselect("Select neighborhoods", lista_barrios[:6], options=lista_barrios)
+        seleccion = st.multiselect("Select neighborhoods", options=lista_barrios, default=lista_barrios[:6])
+
         mostrar_todos = st.checkbox("Show all neighborhoods")
 
         barrios_filtrados = lista_barrios if mostrar_todos else seleccion
