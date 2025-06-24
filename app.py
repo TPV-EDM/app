@@ -86,27 +86,34 @@ with tabs[0]:
             agg = df_filtrado.groupby('barrio').agg(
                 plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
+
+            # Merge coords
             agg = agg.merge(coords_df, on='barrio', how='left')
 
             st.subheader("Predicted Occupied Spots by Neighborhood")
             m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
+            max_val = agg['plazas_ocupadas_predichas'].max()
+
             for _, row in agg.iterrows():
                 if pd.notnull(row['lat']) and pd.notnull(row['lon']):
+                    scaled_radius = np.interp(row['plazas_ocupadas_predichas'], [0, max_val], [4, 20])
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=max(4, np.sqrt(row['plazas_ocupadas_predichas']) / 2),
+                        radius=scaled_radius,
                         color='crimson',
                         fill=True,
                         fill_opacity=0.6,
-                        popup=f"{row['barrio']}: {int(row['plazas_ocupadas_predichas'])} occupied"
+                        popup=f"{row['barrio']}: {int(round(row['plazas_ocupadas_predichas']))} occupied"
                     ).add_to(m)
 
             folium_static(m, width=1000, height=500)
 
             st.subheader("Predicted Values Table")
-            st.dataframe(agg.rename(columns={'plazas_ocupadas_predichas': 'Occupied spots'}), use_container_width=True)
-
+            tabla = agg[['barrio', 'plazas_ocupadas_predichas']].copy()
+            tabla['plazas_ocupadas_predichas'] = tabla['plazas_ocupadas_predichas'].round().astype(int)
+            tabla.columns = ['Neighborhood', 'Occupied spots']
+            st.dataframe(tabla, use_container_width=True)
 # ------------------- TAB 2: MODEL INFO -------------------
 with tabs[1]:
     st.subheader("Model Details")
