@@ -38,7 +38,7 @@ def build_model(df):
     y_pred = model.predict(X)
     metrics = {
         'MAE': mean_absolute_error(y, y_pred),
-        'RMSE': mean_squared_error(y, y_pred, squared=False),
+        'RMSE': mean_squared_error(y, y_pred),
         'R2': r2_score(y, y_pred)
     }
     return model, metrics
