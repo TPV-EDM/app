@@ -39,18 +39,17 @@ def load_data():
 @st.cache_data
 def get_coords_once(barrios):
     geolocator = Nominatim(user_agent="pred-parking")
-    coords = []
+    coords_dict = {}
     for barrio in barrios:
         try:
             loc = geolocator.geocode(f"{barrio}, Madrid, España")
             if loc:
-                coords.append({'barrio': barrio, 'lat': loc.latitude, 'lon': loc.longitude})
+                coords_dict[barrio] = {'lat': loc.latitude, 'lon': loc.longitude}
             time.sleep(1)
         except:
             continue
-    return pd.DataFrame(coords)
+    return coords_dict
 
-@st.cache_data
 def build_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
     y = df['plazas_disponibles']
@@ -62,10 +61,11 @@ def build_model(df):
     model.fit(X, y)
     return model
 
-# ---------- LOAD ----------
+# ---------- CARGA ----------
 df = load_data()
 model = build_model(df)
-coordenadas = get_coords_once(df['barrio'].unique())
+all_barrios = sorted(df['barrio'].unique())
+coords_dict = get_coords_once(all_barrios)
 
 # ---------- TABS ----------
 tabs = st.tabs(["Prediction Map", "Model Info", "Data Visuals"])
@@ -78,10 +78,9 @@ with tabs[0]:
         dia = st.selectbox("Day of the week", sorted(df['dia_semana'].unique()))
         hora_min, hora_max = st.slider("Hour Range", 0, 23, (8, 10))
 
-        lista_barrios = sorted(df['barrio'].unique())
-        opciones_barrios = ["TODOS"] + lista_barrios
+        opciones_barrios = ["TODOS"] + all_barrios
         seleccion = st.multiselect("Select neighborhoods", opciones_barrios, default=opciones_barrios[:6])
-        barrios = lista_barrios if "TODOS" in seleccion else seleccion
+        barrios = all_barrios if "TODOS" in seleccion else seleccion
 
     with col2:
         df_filtered = df[
@@ -107,21 +106,23 @@ with tabs[0]:
                 plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
 
-            agg_coords = agg.merge(coordenadas, on='barrio', how='left')
+            # Añadir coordenadas desde el dict cacheado
+            agg['lat'] = agg['barrio'].apply(lambda x: coords_dict.get(x, {}).get('lat', np.nan))
+            agg['lon'] = agg['barrio'].apply(lambda x: coords_dict.get(x, {}).get('lon', np.nan))
 
             st.subheader("Predicted Occupied Spots by Neighborhood")
             m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
-            max_val = agg_coords['plazas_ocupadas_predichas'].max()
-            min_val = agg_coords['plazas_ocupadas_predichas'].min()
+            max_pred = agg['plazas_ocupadas_predichas'].max()
+            min_pred = agg['plazas_ocupadas_predichas'].min()
 
-            for _, row in agg_coords.iterrows():
+            for _, row in agg.iterrows():
                 if pd.notnull(row['lat']) and pd.notnull(row['lon']):
-                    radius = 5 + 15 * (row['plazas_ocupadas_predichas'] - min_val) / (max_val - min_val + 1e-6)
+                    scaled_radius = 5 + 15 * (row['plazas_ocupadas_predichas'] - min_pred) / (max_pred - min_pred + 1e-6)
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=radius,
-                        color='red',
+                        radius=scaled_radius,
+                        color='crimson',
                         fill=True,
                         fill_opacity=0.6,
                         popup=f"{row['barrio']}: {int(row['plazas_ocupadas_predichas'])} occupied"
