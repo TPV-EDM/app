@@ -8,8 +8,6 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import make_pipeline
 from sklearn.compose import ColumnTransformer
 import gzip
-from geopy.geocoders import Nominatim
-import time
 import plotly.express as px
 
 # ---------- ESTILO ----------
@@ -37,19 +35,11 @@ def load_data():
         return pd.read_csv(f)
 
 @st.cache_data
-def get_coords_once(barrios):
-    geolocator = Nominatim(user_agent="pred-parking")
-    coords_dict = {}
-    for barrio in barrios:
-        try:
-            loc = geolocator.geocode(f"{barrio}, Madrid, España")
-            if loc:
-                coords_dict[barrio] = {'lat': loc.latitude, 'lon': loc.longitude}
-            time.sleep(1)
-        except:
-            continue
-    return coords_dict
+def load_coords():
+    df_coords = pd.read_csv("coordenadas_barrios_madrid.csv")
+    return df_coords.set_index("barrio")[["lat", "lon"]].to_dict(orient="index")
 
+@st.cache_data
 def build_model(df):
     X = df[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
     y = df['plazas_disponibles']
@@ -61,11 +51,10 @@ def build_model(df):
     model.fit(X, y)
     return model
 
-# ---------- CARGA ----------
+# ---------- LOAD ----------
 df = load_data()
+coords_dict = load_coords()
 model = build_model(df)
-all_barrios = sorted(df['barrio'].unique())
-coords_dict = get_coords_once(all_barrios)
 
 # ---------- TABS ----------
 tabs = st.tabs(["Prediction Map", "Model Info", "Data Visuals"])
@@ -78,9 +67,10 @@ with tabs[0]:
         dia = st.selectbox("Day of the week", sorted(df['dia_semana'].unique()))
         hora_min, hora_max = st.slider("Hour Range", 0, 23, (8, 10))
 
-        opciones_barrios = ["TODOS"] + all_barrios
+        lista_barrios = sorted(df['barrio'].unique())
+        opciones_barrios = ["TODOS"] + lista_barrios
         seleccion = st.multiselect("Select neighborhoods", opciones_barrios, default=opciones_barrios[:6])
-        barrios = all_barrios if "TODOS" in seleccion else seleccion
+        barrios = lista_barrios if "TODOS" in seleccion else seleccion
 
     with col2:
         df_filtered = df[
@@ -106,32 +96,31 @@ with tabs[0]:
                 plazas_ocupadas_predichas=('plazas_ocupadas_pred', 'sum')
             ).reset_index()
 
-            # Añadir coordenadas desde el dict cacheado
-            agg['lat'] = agg['barrio'].apply(lambda x: coords_dict.get(x, {}).get('lat', np.nan))
-            agg['lon'] = agg['barrio'].apply(lambda x: coords_dict.get(x, {}).get('lon', np.nan))
+            agg['lat'] = agg['barrio'].map(lambda b: coords_dict.get(b, {}).get('lat'))
+            agg['lon'] = agg['barrio'].map(lambda b: coords_dict.get(b, {}).get('lon'))
 
             st.subheader("Predicted Occupied Spots by Neighborhood")
             m = folium.Map(location=[40.4168, -3.7038], zoom_start=12, tiles="cartodbpositron")
 
-            max_pred = agg['plazas_ocupadas_predichas'].max()
-            min_pred = agg['plazas_ocupadas_predichas'].min()
-
+            max_val = agg['plazas_ocupadas_predichas'].max()
             for _, row in agg.iterrows():
                 if pd.notnull(row['lat']) and pd.notnull(row['lon']):
-                    scaled_radius = 5 + 15 * (row['plazas_ocupadas_predichas'] - min_pred) / (max_pred - min_pred + 1e-6)
+                    radius = 5 + 15 * (row['plazas_ocupadas_predichas'] / max_val)
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=scaled_radius,
-                        color='crimson',
+                        radius=radius,
+                        color='darkred',
                         fill=True,
-                        fill_opacity=0.6,
+                        fill_opacity=0.7,
                         popup=f"{row['barrio']}: {int(row['plazas_ocupadas_predichas'])} occupied"
                     ).add_to(m)
 
             folium_static(m, width=1000, height=500)
 
             st.subheader("Predicted Values Table")
-            tabla = agg.rename(columns={'plazas_ocupadas_predichas': 'occupied_spots'})
+            tabla = agg[['barrio', 'plazas_ocupadas_predichas']].rename(
+                columns={'barrio': 'Neighborhood', 'plazas_ocupadas_predichas': 'Occupied Spots'}
+            )
             st.dataframe(tabla, use_container_width=True)
 
 with tabs[1]:
