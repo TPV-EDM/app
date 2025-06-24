@@ -7,7 +7,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import make_pipeline
 from sklearn.compose import ColumnTransformer
 import gzip
-import json
+import geopandas as gpd
 
 # ---------- CARGA DE DATOS ----------
 @st.cache_data
@@ -53,10 +53,11 @@ st.title("\U0001F17F Parking Spot Prediction in Madrid")
 tabs = st.tabs(["\U0001F5FA\ufe0f Prediction Map", "\U0001F4CA Model Info", "\U0001F4C8 Data Visuals"])
 
 # Load
-geojson = load_geojson()
+gdf = load_geojson()
 df = load_data()
 model = build_model(df)
 
+# TAB 1
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
 
@@ -77,18 +78,18 @@ with tabs[0]:
         df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
 
         df_filtered['barrio_norm'] = (
-        df_filtered['barrio']
-        .str.upper()
-        .str.normalize('NFKD')
-        .str.encode('ascii', errors='ignore')
-        .str.decode('utf-8')
-    )
-    
+            df_filtered['barrio']
+            .str.upper()
+            .str.normalize('NFKD')
+            .str.encode('ascii', errors='ignore')
+            .str.decode('utf-8')
+        )
+
         agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
-        
+
         # Unimos el GeoDataFrame con las predicciones
         choropleth_data = gdf.merge(agg, on='barrio_norm', how='left')
-        
+
         fig = px.choropleth_mapbox(
             choropleth_data,
             geojson=choropleth_data.geometry.__geo_interface__,
@@ -103,13 +104,14 @@ with tabs[0]:
         st.plotly_chart(fig, use_container_width=True)
 
         # Mostrar tabla
-        st.subheader("🧾 Predicted Occupied Spots by Hour")
+        st.subheader("\U0001F697 Predicted Occupied Spots")
         df_summary = df_filtered.groupby(['barrio', 'hora']).agg(
             numero_plazas=('numero_plazas', 'sum'),
             pred=('pred', 'sum')
         ).reset_index()
         df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
         st.dataframe(df_summary.sort_values(['barrio', 'hora']), use_container_width=True)
+
 # TAB 2
 with tabs[1]:
     st.subheader("\U0001F4BB Model Info")
