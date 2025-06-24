@@ -14,22 +14,29 @@ from sklearn.metrics import mean_absolute_error, median_absolute_error, mean_abs
 st.set_page_config(layout="wide", page_title="Parking Spot Prediction")
 st.markdown("""
     <style>
-        html, body, [class*="css"]  {
-            font-family: 'Segoe UI', sans-serif;
-            color: #1a1a1a;
-            background-color: #f9f9f9;
+        html, body, [class*="css"] {
+            font-family: 'Segoe UI', sans-serif !important;
+            color: #333333 !important;
+            background-color: #ffffff !important;
         }
-        .stButton>button {
-            color: white;
-            background-color: #00529B;
-            border-radius: 5px;
-            font-weight: bold;
+        .stButton > button {
+            color: white !important;
+            background-color: #4472C4 !important;
+            border-radius: 5px !important;
+            border: none !important;
         }
-        .stDataFrame th, .stDataFrame td {
-            font-size: 14px;
+        .stTabs [data-baseweb="tab-list"] button {
+            font-size: 16px !important;
+            color: #4472C4 !important;
+        }
+        h1, h2, h3 {
+            color: #2C3E50 !important;
+        }
+        .block-container {
+            padding-top: 2rem !important;
         }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 st.title("Parking Spot Prediction in Madrid")
 
