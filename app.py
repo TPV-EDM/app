@@ -74,8 +74,12 @@ with tabs[0]:
         st.warning("No data for the selected day, hour and neighborhoods.")
         st.stop()
 
+    # HACER PREDICCIÓN
     X_pred = df_input[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']]
-    df_input["predicted_available"] = model.predict(X_pred).round().astype(int).clip(lower=0)
+    preds = model.predict(X_pred)
+    preds = np.asarray(preds).astype(float)
+    preds = np.clip(preds, 0, None)
+    df_input["predicted_available"] = preds.round().astype(int)
 
     resumen = df_input.groupby("barrio").agg(
         total_spots=("numero_plazas", "first"),
