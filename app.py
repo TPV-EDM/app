@@ -20,7 +20,7 @@ def load_data():
 @st.cache_data
 
 def load_geojson():
-    with open("geometria_barrios.json", "r", encoding="utf-8") as f:
+    with open("geometria_barrios.geojson", "r", encoding="utf-8") as f:
         geojson = json.load(f)
         for feature in geojson['features']:
             b = feature['properties']['BARRIO']
@@ -56,7 +56,6 @@ geojson = load_geojson()
 df = load_data()
 model = build_model(df)
 
-# TAB 1
 with tabs[0]:
     col1, col2 = st.columns([1, 3])
 
@@ -76,14 +75,19 @@ with tabs[0]:
         df_filtered['pred'] = model.predict(df_filtered[['barrio', 'dia_semana', 'tramo_horario', 'numero_plazas']])
         df_filtered['ocupacion_%'] = df_filtered['pred'] / df_filtered['numero_plazas']
 
+        # Normalizar nombre del barrio (coincidir con GeoJSON)
         df_filtered['barrio_norm'] = (
             df_filtered['barrio']
             .str.upper()
-            .str.normalize('NFKD')
-            .str.encode('ascii', errors='ignore')
-            .str.decode('utf-8')
+            .str.replace('Á', 'A')
+            .str.replace('É', 'E')
+            .str.replace('Í', 'I')
+            .str.replace('Ó', 'O')
+            .str.replace('Ú', 'U')
+            .str.replace('Ü', 'U')
         )
 
+        # Agrupar para el mapa
         agg = df_filtered.groupby('barrio_norm').agg(total_pred_occupied=('pred', 'sum')).reset_index()
 
         fig = px.choropleth_mapbox(
@@ -96,18 +100,18 @@ with tabs[0]:
             center={"lat": 40.4168, "lon": -3.7038},
             zoom=10,
             color_continuous_scale="Reds",
-            title="Predicted Occupied Spots by Neighborhood (summed by hour)"
+            opacity=0.65,
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("\U0001F697 Predicted Occupied Spots")
+        # Mostrar tabla
+        st.subheader("🧾 Predicted Occupied Spots by Hour")
         df_summary = df_filtered.groupby(['barrio', 'hora']).agg(
             numero_plazas=('numero_plazas', 'sum'),
             pred=('pred', 'sum')
         ).reset_index()
         df_summary['ocupacion_%'] = df_summary['pred'] / df_summary['numero_plazas']
-        st.dataframe(df_summary, use_container_width=True)
-
+        st.dataframe(df_summary.sort_values(['barrio', 'hora']), use_container_width=True)
 # TAB 2
 with tabs[1]:
     st.subheader("\U0001F4BB Model Info")
